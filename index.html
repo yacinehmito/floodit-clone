@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flood it</title>
+  <style>
+    #board {
+      display: flex;
+      flex-flow: row wrap;
+      position: relative;
+    }
+    .result {
+      position: absolute;
+      pointer-events: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.6rem;
+      color: white;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+    }
+    .result.win, .result.loss {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <button id="startButton">
+    Start a new game
+  </button>
+  <div id="board">
+  </div>
+  <div id="plays"></div>
+  <script src="script.js">
+  </script>
+</body>
+</html>
