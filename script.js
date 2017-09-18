@@ -1,223 +1,212 @@
-function colorGenerator(frequencies) {
-  var sum = 0;
+function pickOne(freqs) {
+  const values = Object.keys(freqs)
+  const cumFreqs = {}
+  let sum = 0
+  for (const value of values) {
+    sum += freqs[value]
+    cumFreqs[value] = sum
+  }
+  const r = Math.floor(Math.random() * sum)
+  for (const value of values) {
+    if (cumFreqs[value] > r) {
+      return value
+    }
+  }
+}
 
-  Object.keys(frequencies).forEach(function(color) {
-    sum += frequencies[color];
-  });
-
+function colorGenerator(colorFrequencies) {
+  const freqs = Object.assign({}, colorFrequencies)
   function randomColor() {
-    if (sum === 0) {
-      return null;
-    }
-    var cumFreq = 0;
-    var selectedColor = null;
-    var r = Math.random();
-    Object.keys(frequencies).some(function(color) {
-      cumFreq += frequencies[color];
-      if (cumFreq / sum > r) {
-        selectedColor = color;
-        return true;
-      }
-    });
-    if (selectedColor !== null) {
-      sum--;
-      frequencies[selectedColor]--;
-    }
-    return selectedColor;
+    const color = pickOne(freqs)
+    freqs[color]--
+    return color
   }
-
-  return randomColor;
+  return randomColor
 }
 
-function buildBoard(length, width) {
-  var n = length;
-  var m = width;
-  var s = n * m;
-  var part = Math.floor(s / 6);
-  var extras = s % 6;
-  var frequencies = {
-    red: part,
-    green: part,
-    cyan: part,
-    purple: part,
-    yellow: part,
-    navajowhite: part
-  };
-  Object.keys(frequencies).forEach(function(color) {
+function generateArray(length, generator) {
+  const array = new Array(length)
+  for (let i = 0; i < length; i++) {
+    array[i] = generator(i)
+  }
+  return array
+}
+
+function matrixForEach(callback) {
+  this.forEach((rowArray, row) =>
+    rowArray.forEach((cell, col) => callback(cell, row, col))
+  )
+}
+
+function generateMatrix(length, width, generator) {
+  const matrix = generateArray(length, row =>
+    generateArray(width, col => generator(row, col))
+  )
+  matrix.matrixForEach = matrixForEach
+  return matrix
+}
+
+function buildBoard(length, width, colors) {
+  const size = length * width
+  const stock = Math.floor(size / colors.length)
+  let extras = size % colors.length
+  const frequencies = {}
+  colors.forEach(color => {
+    frequencies[color] = stock
     if (extras > 0) {
-      frequencies[color]++;
-      extras--;
+      frequencies[color]++
+      extras--
     }
-  });
-  var randomColor = colorGenerator(frequencies);
-  var board = new Array(n).fill(null).map(function(_, rowIndex) {
-    return new Array(m).fill(null).map(function(_, colIndex) {
-      var color = randomColor();
-      if (color === null) {
-        throw Error("Cannot pick random color");
-      }
-      return {
-        row: rowIndex,
-        col: colIndex,
-        color
-      };
-    });
-  });
-  return board;
+  })
+  const randomColor = colorGenerator(frequencies)
+  const board = generateMatrix(length, width, (row, col) => ({
+    row,
+    col,
+    color: randomColor(),
+    owned: false
+  }))
+  return board
 }
 
-function Game() {
-  this.length = 14;
-  this.width = 14;
-  this.size = this.length * this.width;
-  this.board = buildBoard(this.length, this.width);
-  this.maxPlays = 25;
-  this.plays = 0;
-  this.controlled = new Set();
-
-  var firstCell = this.board[0][0];
-  this.color = firstCell.color;
-  this.controlled.add(firstCell);
-  var controlled = this.controlled;
-  this.getNeighboursOf(firstCell).forEach(function(neighbour) {
-    if (neighbour.color === firstCell.color) {
-      controlled.add(neighbour);
+class Game {
+  constructor(length, width) {
+    if (length === undefined || width === undefined) {
+      throw Error('Should provide dimensions')
     }
-  });
+    this.length = length
+    this.width = width
+    this.size = width * length
+    this.colors = ['red', 'green', 'cyan', 'purple', 'yellow', 'navajowhite']
+    this.board = buildBoard(length, width, this.colors)
+    this.maxPlays = 25
+    this.plays = 0
+
+    const firstCell = this.get(0, 0)
+    this.color = firstCell.color
+    firstCell.owned = true
+    this.numberOfOwnedCells = 1
+    this.seizeNeighboursOf(firstCell)
+  }
+  get(i, j) {
+    if (i < 0 || i >= this.length) {
+      return undefined
+    }
+    return this.board[i][j]
+  }
+  getNeighboursOf(cell) {
+    const { row, col } = cell
+    const deltas = [[0, 1], [0, -1], [1, 0], [-1, 0]]
+    return deltas
+      .map(([dRow, dCol]) => this.get(row + dRow, col + dCol))
+      .filter(neighbour => neighbour !== undefined)
+  }
+  seizeNeighboursOf(cell) {
+    this.getNeighboursOf(cell)
+      .filter(neighbour => !neighbour.owned && neighbour.color === cell.color)
+      .map(neighbour => {
+        neighbour.owned = true
+        this.numberOfOwnedCells++
+        return neighbour
+      })
+      .forEach(neighbour => this.seizeNeighboursOf(neighbour))
+  }
+  forEach(callback) {
+    this.board.matrixForEach(callback)
+  }
+  mapBoard(callback) {
+    return generateMatrix(this.length, this.width, (row, col) =>
+      callback(this.get(row, col), row, col)
+    )
+  }
+  play(color) {
+    if (color === this.color) {
+      return 'noaction'
+    }
+    this.color = color
+    this.forEach(cell => {
+      if (cell.owned) {
+        cell.color = this.color
+        this.seizeNeighboursOf(cell)
+      }
+    })
+    this.plays++
+    console.log(this.numberOfOwnedCells)
+    console.log(this.size)
+    return this.numberOfOwnedCells === this.size
+      ? 'win'
+      : this.plays >= this.maxPlays ? 'loss' : 'keepgoing'
+  }
 }
-
-Game.prototype.mapBoard = function(callback) {
-  return this.board.map(function(row, rowIndex) {
-    return row.map(function(cell, colIndex) {
-      return callback(cell, rowIndex, colIndex, this.board);
-    });
-  });
-};
-
-Game.prototype.getNeighboursOf = function(cell) {
-  var neighbours = [];
-  function addToNeighbours() {
-    for (var i = 0; i < arguments.length; i++) {
-      var cell = arguments[i];
-      if (cell !== undefined) {
-        neighbours.push(cell);
-      }
-    }
-  }
-
-  var row;
-
-  row = this.board[cell.row - 1];
-  if (row) {
-    addToNeighbours(row[cell.col]);
-  }
-
-  row = this.board[cell.row];
-  addToNeighbours(row[cell.col - 1], row[cell.col + 1]);
-
-  row = this.board[cell.row + 1];
-  if (row) {
-    addToNeighbours(row[cell.col]);
-  }
-
-  return neighbours;
-};
-
-Game.prototype.play = function(color) {
-  var that = this;
-  if (color === this.color) {
-    return "noaction";
-  }
-  this.color = color;
-  this.controlled.forEach(function(cell) {
-    that.getNeighboursOf(cell).forEach(function(neighbour) {
-      if (neighbour.color === color) {
-        that.controlled.add(neighbour);
-      }
-    });
-  });
-  this.controlled.forEach(function(cell) {
-    cell.color = color;
-  });
-  this.plays++;
-  if (this.plays >= this.maxPlays) {
-    return "loss";
-  }
-  if (this.controlled.size === this.size) {
-    return "win";
-  }
-  return "keepgoing";
-};
-
-var listener;
 
 function generateHtmlBoard(game, boardDiv) {
-  var playsDiv = document.getElementById("plays");
+  const playsDiv = document.getElementById('plays')
 
-  var desiredBoardWidth = 300;
-  var cellSize = Math.floor(desiredBoardWidth / game.length);
-  var boardWidth = cellSize * game.length;
+  const desiredBoardWidth = 300
+  const cellSize = Math.floor(desiredBoardWidth / game.length)
+  const boardWidth = cellSize * game.length
 
-  boardDiv.style.width = boardWidth + "px";
+  boardDiv.style.width = boardWidth + 'px'
 
-  var cellDivs = game.mapBoard(function(cell) {
-    var cellDiv = document.createElement("div");
-    cellDiv.classList.add("cell");
-    cellDiv.dataset.row = cell.row;
-    cellDiv.dataset.col = cell.col;
-    cellDiv.style.backgroundColor = cell.color;
-    cellDiv.style.width = cellSize + "px";
-    cellDiv.style.height = cellSize + "px";
-    boardDiv.appendChild(cellDiv);
+  const cellDivs = game.mapBoard(function(cell) {
+    const cellDiv = document.createElement('div')
+    cellDiv.classList.add('cell')
+    cellDiv.dataset.row = cell.row
+    cellDiv.dataset.col = cell.col
+    cellDiv.style.backgroundColor = cell.color
+    cellDiv.style.width = cellSize + 'px'
+    cellDiv.style.height = cellSize + 'px'
+    boardDiv.appendChild(cellDiv)
     return cellDiv
-  });
+  })
 
-  var resultDiv = document.createElement("div");
-  resultDiv.classList.add("result");
+  const resultDiv = document.createElement('div')
+  resultDiv.classList.add('result')
   boardDiv.append(resultDiv)
 
-  playsDiv.innerHTML = game.plays + " / " + game.maxPlays
+  playsDiv.innerHTML = game.plays + ' / ' + game.maxPlays
 
   function onClick(event) {
-    var cellDiv = event.target;
-    if (!cellDiv.classList.contains("cell")) {
-      return undefined;
+    const cellDiv = event.target
+    if (!cellDiv.classList.contains('cell')) {
+      return undefined
     }
 
-    var playResult = game.play(game.board[cellDiv.dataset.row][cellDiv.dataset.col].color);
-    if (playResult === "win") {
-      resultDiv.classList.add("win");
-      resultDiv.innerHTML = "<div>You win!</div>";
-    }
-    if (playResult === "loss") {
-      resultDiv.classList.add("loss");
-      resultDiv.innerHTML = "<div>You lose...</div>";
-    }
-    cellDivs.forEach(function(row) {
-      row.forEach(function(cellDiv) {
-        cellDiv.style.backgroundColor =
-          game.board[cellDiv.dataset.row][cellDiv.dataset.col].color;
-      })
-    });
+    const { row, col } = cellDiv.dataset
+    const playResult = game.play(game.get(row, col).color)
 
-    playsDiv.innerText = game.plays + " / " + game.maxPlays
+    if (playResult === 'win') {
+      resultDiv.classList.add('win')
+      resultDiv.innerHTML = '<div>You win!</div>'
+    }
+    if (playResult === 'loss') {
+      resultDiv.classList.add('loss')
+      resultDiv.innerHTML = '<div>You lose...</div>'
+    }
+    cellDivs.matrixForEach(cellDiv => {
+      const { row, col } = cellDiv.dataset
+      cellDiv.style.backgroundColor = game.get(row, col).color
+    })
 
+    playsDiv.innerText = game.plays + ' / ' + game.maxPlays
   }
 
-  listener = onClick
-  boardDiv.addEventListener("click", listener);
+  boardClickListener = onClick
+  boardDiv.addEventListener('click', boardClickListener)
 }
 
-var game;
+let game
+let boardClickListener
 window.onload = function() {
-  game = new Game()
-  var boardDiv = document.getElementById("board")
-  generateHtmlBoard(game, boardDiv)
-  var startButton = document.getElementById("startButton");
-  startButton.addEventListener("click", function() {
-    boardDiv.removeEventListener("click", listener)
-    boardDiv.innerHTML = ""
-    game = new Game()
+  const boardDiv = document.getElementById('board')
+  const startButton = document.getElementById('startButton')
+  startButton.addEventListener('click', function() {
+    boardDiv.removeEventListener('click', boardClickListener)
+    while (boardDiv.firstChild) {
+      boardDiv.removeChild(boardDiv.firstChild)
+    }
+    game = new Game(14, 14)
     generateHtmlBoard(game, boardDiv)
   })
+  game = new Game(14, 14)
+  generateHtmlBoard(game, boardDiv)
 }
